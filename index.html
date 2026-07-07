@@ -61,7 +61,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 
 #info-text .row{display:flex;gap:10px}
 #info-text .col{flex:1}
-/* Overlay */
+</style>
 </head>
 <body>
 <div id="app">
@@ -427,7 +427,7 @@ async function startWithMode(mode) {
   S.gain.gain.value = readP().volume;
   S.analyser = S.ctx.createAnalyser();
   S.analyser.fftSize = 8192;
-  S.processor = S.ctx.createScriptProcessor(256, 0, 1);
+  S.processor = S.ctx.createScriptProcessor(256, 1, 1);
   S.processor.onaudioprocess = onAudioProcess;
   S.processor.connect(S.gain);
   S.gain.connect(S.analyser);
