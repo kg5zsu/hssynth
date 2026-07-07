@@ -886,7 +886,7 @@ function anim(now) {
   S.progress = prog;
   S.curBPM = bpm;
   if (elapsed >= totalDur) { stop(); return }
-  if (now - lastStaffUpdate > 120 || prog >= 1) { lastStaffUpdate = now; try { drawStaff(p, prog) } catch (e) {} }
+  if (now - lastStaffUpdate > 120 || prog >= 1) { lastStaffUpdate = now; try { drawStaff(p, prog); updateTable(p) } catch (e) {} }
   if (now - lastSpectrumUpdate > 50) { lastSpectrumUpdate = now; try { drawSpectrum(p, bpm); drawWaveform() } catch (e) {} }
   S.anim = requestAnimationFrame(anim);
 }
@@ -938,7 +938,7 @@ function setup() {
       const name = freqToNote(freq).name;
       $('current-note').textContent = name + ' (' + freq.toFixed(1) + ' Hz)';
       updateMaxBPM();
-      if (!S.playing) { const p = readP(); drawStaff(p, 0); updateTable(p) }
+      const p = readP(); drawStaff(p, S.playing ? S.progress : 0); updateTable(p);
     },
   });
 
@@ -950,7 +950,7 @@ function setup() {
     const s = $(id), v = $(vid);
     s.addEventListener('input', () => {
       v.textContent = fmt(s.value);
-      if (!S.playing) { const p = readP(); drawStaff(p, 0); updateTable(p) }
+      const p = readP(); if (!S.playing) drawStaff(p, 0); updateTable(p);
     });
   }
 
@@ -969,7 +969,7 @@ function setup() {
   for (const id of ['note-value', 'time-sig', 'articulation', 'waveform']) {
     $(id).addEventListener('change', () => {
       if (id === 'note-value') updateMaxBPM();
-      if (!S.playing) { const p = readP(); drawStaff(p, 0); updateTable(p) }
+      const p = readP(); if (!S.playing) drawStaff(p, 0); updateTable(p);
     });
   }
 
