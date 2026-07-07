@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rhythm → Pitch Demo</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f5f5f8;--surface:#ffffff;--surface2:#e8e8ee;--border:#c8c8d8;--accent:#c92a3e;--text:#1a1a2e;--text-dim:#8888a0;--green:#2ea86a;--yellow:#c9942e}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-apple-system,sans-serif;font-size:13px;overflow:hidden;height:100vh;display:flex;flex-direction:column}
+#app{display:flex;flex-direction:column;height:100vh;padding:6px;gap:4px}
+#controls{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:5px 14px;flex-shrink:0}
+.ctrl-group{display:flex;align-items:center;gap:4px}
+.ctrl-group label{font-size:11px;color:var(--text-dim);white-space:nowrap}
+.ctrl-group input[type=range]{width:60px;height:14px;accent-color:var(--accent);cursor:pointer}
+.ctrl-group .val{font-variant-numeric:tabular-nums;min-width:32px;text-align:right;font-size:11px;color:var(--accent)}
+.ctrl-group select{background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px;cursor:pointer;font-size:12px}
+.btn{background:var(--accent);color:#fff;border:none;border-radius:4px;padding:5px 16px;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s}
+.btn:hover{background:#e05a6e}
+.btn-normal{background:var(--green)}
+.btn-normal:hover{background:#5ac98a}
+.btn-stop{background:var(--text-dim)}
+.btn-stop:hover{background:#a0a0b8}
+.btn-match{background:#ffffff;color:var(--text);border:1px solid var(--border)}
+.btn-match:hover{background:var(--surface2)}
+.btn-dis{opacity:.4;pointer-events:none}
+#sep{width:1px;height:22px;background:var(--border);flex-shrink:0}
+.pattern-row{display:flex;align-items:center;gap:4px;width:100%;margin-top:2px}
+.pattern-row label{font-size:11px;color:var(--text-dim);white-space:nowrap}
+.pattern-row input[type=text]{flex:1;max-width:280px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-size:12px;font-family:monospace}
+.pattern-row input[type=text]:focus{outline:none;border-color:var(--accent)}
+.pattern-row input[type=checkbox]{accent-color:var(--accent);cursor:pointer}
+/* Knobs */
+.knob-wrap{display:inline-flex;flex-direction:column;align-items:center;gap:1px;position:relative}
+.knob-wrap canvas{cursor:ns-resize;border-radius:50%}
+.knob-wrap .knob-label{font-size:10px;color:var(--text-dim);white-space:nowrap}
+.knob-wrap .knob-value{font-size:10px;color:var(--accent);font-variant-numeric:tabular-nums;white-space:nowrap;text-align:center;min-width:38px}
+.knob-wrap.disabled{opacity:.4;pointer-events:none}
+/* Canvases */
+#canvases{flex:1;display:flex;flex-direction:column;min-height:0}
+.canvas-wrap{background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;flex:1;display:flex;flex-direction:column}
+.canvas-wrap canvas{width:100%;height:100%;display:block}
+.canvas-label{font-size:10px;padding:2px 10px;color:var(--text-dim);background:var(--surface2);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;flex-shrink:0}
+/* Note display */
+#note-display{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:2px 14px;flex-shrink:0;display:flex;gap:6px;align-items:center;font-size:12px}
+#note-display .nb-label{color:var(--text-dim);font-size:11px}
+#note-display .nb-value{font-weight:600;color:var(--accent)}
+/* Info table */
+#info-table{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:3px 10px;flex-shrink:0;font-variant-numeric:tabular-nums;font-size:13pt;border-collapse:collapse;width:100%;table-layout:fixed}
+#info-table th{color:var(--text-dim);font-size:10px;font-weight:normal;padding:2px 6px;text-align:center;border-bottom:1px solid var(--border)}
+#info-table td{padding:2px 6px;text-align:center;font-weight:600}
+#info-table .row-label{color:var(--text-dim);font-size:10px;font-weight:normal;text-align:left;width:36px}
+#info-table .regime-accent{color:var(--accent)}
+#info-table .regime-green{color:var(--green)}
+#info-table .regime-yellow{color:var(--yellow)}
+/* Info text pane */
+#info-text{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 12px;flex-shrink:0;font-size:12pt;line-height:1.5;color:var(--text)}
+#info-text p{margin-bottom:4px}
+#info-text p:last-child{margin-bottom:0}
+#info-text strong{color:var(--accent)}
+/* Overlay */
+#generating-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;justify-content:center;align-items:center;font-size:18px;color:#fff;flex-direction:column;gap:12px}
+#generating-overlay.show{display:flex}
+#gen-spinner{width:32px;height:32px;border:3px solid rgba(255,255,255,.1);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="app">
+<div id="controls">
+<button class="btn" id="btn-sweep">▶ Sweep</button><button class="btn btn-normal" id="btn-normal">♩ Normal</button><button class="btn" id="btn-highspeed">♩ High Speed</button> <div id="sep"></div>
+
+<div class="knob-wrap" id="knob-start-bpm"><canvas></canvas><span class="knob-label">Start BPM</span><span class="knob-value" id="start-bpm-val">60</span></div>
+<div class="knob-wrap" id="knob-end-bpm"><canvas></canvas><span class="knob-label">End BPM</span><span class="knob-value" id="end-bpm-val">2000</span></div>
+<div id="sep"></div>
+<div class="knob-wrap" id="knob-note"><canvas></canvas><span class="knob-label">Note</span><span class="knob-value" id="base-freq-val">A4</span></div>
+
+<div id="sep"></div>
+<div class="ctrl-group"><label>Sweep</label><input type="range" id="duration" min="2" max="30" value="8" step="0.5"><span class="val" id="duration-val">8s</span></div>
+<div class="ctrl-group"><label>Value</label>
+<select id="note-value">
+<option value="1">1/4</option><option value="2" selected>1/8</option><option value="4">1/16</option><option value="8">1/32</option>
+<option value="16">1/64</option><option value="32">1/128</option><option value="64">1/256</option><option value="128">1/512</option><option value="256">1/1024</option>
+</select></div>
+<div class="ctrl-group"><label>Time</label>
+<select id="time-sig">
+<option value="2/4">2/4</option><option value="3/4">3/4</option><option value="4/4" selected>4/4</option><option value="6/8">6/8</option><option value="12/8">12/8</option>
+</select></div>
+<div id="sep"></div>
+<div class="ctrl-group"><label>Art.</label>
+<select id="articulation">
+<option value="1.0">Legato 100%</option><option value="0.8" selected>Normal 80%</option><option value="0.5">Staccato 50%</option><option value="0.25">Staccatissimo 25%</option>
+</select></div>
+<div class="ctrl-group"><label>Wave</label>
+<select id="waveform">
+<option value="sine" selected>Sine</option><option value="square">Square</option><option value="saw">Saw</option><option value="triangle">Triangle</option>
+</select></div>
+<div class="ctrl-group"><label>Vol</label><input type="range" id="volume" min="0" max="1" value="0.5" step="0.05"><span class="val" id="volume-val">0.5</span></div>
+<div class="pattern-row">
+<input type="checkbox" id="use-pattern"><label for="use-pattern">Custom pattern</label>
+<input type="text" id="pattern-input" placeholder="e.g. 1,0,1,0,1,1,1,0" disabled>
+<button class="btn btn-match" id="btn-match">Match</button>
+</div>
+</div>
+
+<div id="canvases">
+<div class="canvas-wrap" style="flex:1">
+<div class="canvas-label"><span>🎼 Staff</span><span id="staff-info">Ready</span></div>
+<canvas id="staff-canvas"></canvas></div>
+</div>
+
+<div id="note-display">
+<span class="nb-label">Note</span>
+<span class="nb-value" id="current-note">A4 (440.0 Hz)</span>
+</div>
+
+<table id="info-table">
+<thead><tr>
+<th></th><th>BPM</th><th>Freq</th><th>Rate</th><th>Period</th><th>Note Dur</th><th>Regime</th>
+</tr></thead>
+<tbody>
+<tr>
+<td class="row-label">Start</td>
+<td id="ti-sbpm">60</td><td id="ti-freq">440.0 Hz</td><td id="ti-srate">2.0 Hz</td><td id="ti-sper">500.0 ms</td><td id="ti-sndur">400.0 ms</td><td id="ti-sreg" class="regime-green">⏱ Rhythm</td>
+</tr>
+<tr>
+<td class="row-label">End</td>
+<td id="ti-ebpm">2000</td><td id="ti-freq2">440.0 Hz</td><td id="ti-erate">66.7 Hz</td><td id="ti-eper">15.0 ms</td><td id="ti-endur">12.0 ms</td><td id="ti-ereg" class="regime-accent">♪ Pitch</td>
+</tr>
+</tbody>
+</table>
+
+<div id="info-text">
+<p><strong>Rhythm → Pitch</strong> — As note repetition rate rises, rhythmic events blend into continuous pitch. Below ~20 Hz is <em>Rhythm</em>, above ~60 Hz is <em>Pitch</em>.</p>
+<p><strong>Rate</strong> = BPM × note‑value / 60 (Hz). <strong>Period</strong> = 60 / BPM / note‑value — the time between slots. <strong>Note Duration</strong> = Period × Articulation — the sounding portion of each slot.</p>
+<p>At 50% articulation, Note Duration = Period × 0.5, so <strong>Period = 2 × Note Duration</strong>. The note sounds for exactly half the slot, leaving the rest as silence.</p>
+<p><strong>Max BPM</strong> is capped by the Nyquist rate: rep‑rate ≤ sample‑rate / 4. At 44.1 kHz with 1/8 notes, that's ~330k BPM. Higher BPMs allow rep‑rate to exceed note frequency, creating inharmonic sidebands.</p>
+</div>
+</div>
+
+<div id="generating-overlay"><div id="gen-spinner"></div>Generating audio buffer…</div>
+
+<script type="module">
+const NN = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+let lastStaffUpdate = 0;
+
+const WAVE = {
+  sine(t){return Math.sin(2*Math.PI*t)},
+  square(t){return(t%1)<0.5?1:-1},
+  saw(t){return 2*((t%1))-1},
+  triangle(t){const x=t%1;return x<0.5?4*x-1:3-4*x},
+};
+
+const $ = id => document.getElementById(id);
+const staffC = { el: $('staff-canvas'), ctx: $('staff-canvas').getContext('2d') };
+
+function freqToNote(f){
+  const m = 69 + 12 * Math.log2(f / 440);
+  const n = Math.round(m);
+  return { name: NN[n % 12] + (Math.floor(n / 12) - 1), midi: n };
+}
+
+function midiToFreq(m){ return 440 * Math.pow(2, (m - 69) / 12) }
+
+function parsePattern(s) {
+  if (!s || !s.trim()) return null;
+  const o = [];
+  for (const p of s.split(',')) {
+    const t = p.trim().toLowerCase();
+    if (t === '1' || t === 'on' || t === 'true') o.push(1);
+    else if (t === '0' || t === 'off' || t === 'false') o.push(0);
+    else return null;
+  }
+  return o.length ? o : null;
+}
+
+function noteValName(nv) {
+  const names = { 1: '1/4', 2: '1/8', 4: '1/16', 8: '1/32', 16: '1/64', 32: '1/128', 64: '1/256', 128: '1/512', 256: '1/1024' };
+  return names[nv] || ('1/' + (4 * nv));
+}
+
+function notesPerBeat(nv) { return nv }
+function slotDur(bpm, nv) { return 60 / bpm / nv }
+function bpmToRep(bpm, nv) { return bpm / 60 * nv }
+function getPat() { return parsePattern($('pattern-input').value) }
+
+function fmtTime(s) {
+  if (s < 0.001) return (s * 1e6).toFixed(0) + ' µs';
+  if (s < 1) return (s * 1e3).toFixed(1) + ' ms';
+  return s.toFixed(3) + ' s';
+}
+
+function regimeName(r) {
+  if (r < 20) return { name: '⏱ Rhythm', cls: 'green' };
+  if (r < 60) return { name: '↗ Transition', cls: 'yellow' };
+  return { name: '♪ Pitch', cls: 'accent' };
+}
+
+// ═══════════════════════════════════════
+// State
+// ═══════════════════════════════════════
+const S = {
+  playing: false, generating: false, mode: 'sweep',
+  progress: 0, curBPM: 60,
+  ctx: null, buf: null, source: null, gain: null,
+  anim: null, scheduledStart: 0,
+};
+
+const HOLD_DUR = 20;
+
+// ═══════════════════════════════════════
+// Knob widget
+// ═══════════════════════════════════════
+const KNOB_VALS = {};
+const knobs = {};
+
+function createKnob(containerId, opts) {
+  const container = $(containerId);
+  const canvas = container.querySelector('canvas');
+  const valEl = container.querySelector('.knob-value');
+  const dpr = window.devicePixelRatio || 1;
+  let value = opts.initial;
+  const size = opts.size || 38;
+
+  canvas.width = size * dpr;
+  canvas.height = size * dpr;
+  canvas.style.width = size + 'px';
+  canvas.style.height = size + 'px';
+
+  const ctx = canvas.getContext('2d');
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const r = canvas.width / 2 - 4 * dpr;
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const sa = 0.75 * Math.PI, ea = 2.25 * Math.PI;
+    const frac = Math.max(0, Math.min(1, (value - opts.min) / (opts.max - opts.min)));
+    const va = sa + frac * (ea - sa);
+
+    ctx.strokeStyle = 'rgba(0,0,0,0.10)';
+    ctx.lineWidth = 3 * dpr;
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(cx, cy, r, sa, ea); ctx.stroke();
+
+    ctx.strokeStyle = opts.accent || '#c92a3e';
+    ctx.beginPath(); ctx.arc(cx, cy, r, sa, va); ctx.stroke();
+
+    const ix = cx + Math.cos(va) * (r - 1 * dpr);
+    const iy = cy + Math.sin(va) * (r - 1 * dpr);
+    ctx.strokeStyle = '#1a1a2e';
+    ctx.lineWidth = 2 * dpr;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ix, iy); ctx.stroke();
+
+    ctx.fillStyle = '#1a1a2e';
+    ctx.beginPath(); ctx.arc(cx, cy, 2.5 * dpr, 0, Math.PI * 2); ctx.fill();
+  }
+
+  KNOB_VALS[containerId] = value;
+  valEl.textContent = opts.format ? opts.format(value) : value.toFixed(0);
+  draw();
+
+  let dragging = false, lastY = 0;
+
+  function startDrag(clientY) { dragging = true; lastY = clientY }
+
+  function onDrag(clientY, shift) {
+    if (!dragging) return;
+    const delta = lastY - clientY;
+    lastY = clientY;
+    let mul = (opts.max - opts.min) / 200;
+    if (shift) mul *= 0.2;
+    let newVal = value + delta * mul;
+    if (opts.step > 0 && opts.snap) {
+      if (opts.step >= 1) newVal = Math.round(newVal);
+      else newVal = Math.round(newVal / opts.step) * opts.step;
+    }
+    newVal = Math.max(opts.min, Math.min(opts.max, newVal));
+    if (newVal !== value) {
+      value = newVal;
+      KNOB_VALS[containerId] = value;
+      valEl.textContent = opts.format ? opts.format(value) : value.toFixed(0);
+      draw();
+      if (opts.onChange) opts.onChange(value);
+    }
+  }
+
+  function endDrag() { dragging = false }
+
+  canvas.addEventListener('mousedown', e => { startDrag(e.clientY); e.preventDefault() });
+  document.addEventListener('mousemove', e => onDrag(e.clientY, e.shiftKey));
+  document.addEventListener('mouseup', endDrag);
+
+  canvas.addEventListener('touchstart', e => { const t = e.touches[0]; startDrag(t.clientY); e.preventDefault() });
+  document.addEventListener('touchmove', e => { if (dragging) { const t = e.touches[0]; onDrag(t.clientY, e.shiftKey); e.preventDefault() } }, { passive: false });
+  document.addEventListener('touchend', endDrag);
+
+  const api = {
+    getValue: () => value,
+    setValue: v => {
+      v = Math.max(opts.min, Math.min(opts.max, v));
+      if (opts.step > 0 && opts.snap) {
+        if (opts.step >= 1) v = Math.round(v);
+        else v = Math.round(v / opts.step) * opts.step;
+      }
+      value = v;
+      KNOB_VALS[containerId] = value;
+      valEl.textContent = opts.format ? opts.format(value) : value.toFixed(0);
+      draw();
+    },
+    setMax: mx => {
+      opts.max = mx;
+      if (value > mx) { api.setValue(mx) }
+    },
+  };
+
+  knobs[containerId] = api;
+  return api;
+}
+
+// ═══════════════════════════════════════
+// Audio Engine
+// ═══════════════════════════════════════
+function genBuf(p, mode) {
+  const sr = S.ctx.sampleRate, hold = HOLD_DUR;
+  const totalDur = (mode === 'normal' || mode === 'highspeed') ? hold : p.duration + hold;
+  const len = Math.ceil(totalDur * sr), buf = new Float32Array(len);
+  const npb = notesPerBeat(p.noteValue), pat = p.usePattern ? parsePattern(p.patternStr) : null;
+  const sB = p.startBPM, eB = p.endBPM, dur = p.duration, wf = WAVE[p.waveform] || WAVE.sine;
+  let prev = -1, ph = 0;
+  for (let i = 0; i < len; i++) {
+    let bpm, beats;
+    const t = i / sr;
+    if (mode === 'highspeed') {
+      bpm = eB;
+      beats = eB / 60 * t;
+    } else if (mode === 'normal') {
+      bpm = sB;
+      beats = sB / 60 * t;
+    } else {
+      const phase = Math.min(t / dur, 1);
+      bpm = sB + (eB - sB) * phase;
+      if (t <= dur) beats = (sB * t + (eB - sB) * t * t / (2 * dur)) / 60;
+      else {
+        const sweepBeats = (sB * dur + (eB - sB) * dur * dur / (2 * dur)) / 60;
+        beats = sweepBeats + eB * (t - dur) / 60;
+      }
+    }
+    const slot = Math.floor(beats * npb);
+    const frac = (beats * npb) - slot;
+    let isOn;
+    if (pat) isOn = pat[slot % pat.length] === 1;
+    else isOn = frac < p.articulation;
+    if (isOn) {
+      if (slot !== prev) { prev = slot; ph = 0 }
+      ph += 1 / sr * p.baseFreq;
+      buf[i] = wf(ph);
+    } else {
+      if (slot !== prev) { prev = slot; ph = 0 }
+      buf[i] = 0;
+    }
+  }
+  return buf;
+}
+
+function playBuf(buf) {
+  const ctx = S.ctx, ab = ctx.createBuffer(1, buf.length, ctx.sampleRate);
+  ab.getChannelData(0).set(buf);
+  S.gain = ctx.createGain();
+  S.gain.gain.value = readP().volume;
+  S.source = ctx.createBufferSource();
+  S.source.buffer = ab;
+  S.source.connect(S.gain);
+  S.gain.connect(ctx.destination);
+  const off = 0.05, startTime = ctx.currentTime + off;
+  S.source.start(startTime, 0);
+  S.scheduledStart = startTime;
+}
+
+async function startWithMode(mode) {
+  if (S.playing || S.generating) {
+    if (S.playing) stop();
+    if (S.generating) { S.generating = false; $('generating-overlay').classList.remove('show'); setControlsLock(false) }
+    return;
+  }
+  if (!S.ctx) S.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (S.ctx.state === 'suspended') await S.ctx.resume();
+  const p = readP();
+  S.mode = mode;
+  setControlsLock(true);
+  S.generating = true;
+  $('generating-overlay').classList.add('show');
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const buf = genBuf(p, mode);
+  if (!S.generating) return;
+  S.generating = false;
+  $('generating-overlay').classList.remove('show');
+  S.buf = buf;
+  S.playing = true;
+  S.progress = 0;
+  playBuf(buf);
+  for (const btn of [$('btn-sweep'), $('btn-normal'), $('btn-highspeed')]) { btn.textContent = '⏹ Stop'; btn.classList.add('btn-stop') }
+  lastStaffUpdate = 0;
+  S.anim = requestAnimationFrame(anim);
+}
+
+function stop(noRedraw) {
+  S.playing = false;
+  S.progress = 0;
+  for (const n of ['source', 'gain']) {
+    if (S[n]) { try { if (typeof S[n].stop === 'function') S[n].stop() } catch (e) {} try { S[n].disconnect() } catch (e) {} S[n] = null }
+  }
+  if (S.anim) { cancelAnimationFrame(S.anim); S.anim = null }
+  S.buf = null;
+  S.scheduledStart = 0;
+  setControlsLock(false);
+  for (const b of [$('btn-sweep'), $('btn-normal'), $('btn-highspeed')]) {
+    const labels = { 'btn-sweep': '▶ Sweep', 'btn-normal': '♩ Normal', 'btn-highspeed': '♩ High Speed' };
+    b.textContent = labels[b.id] || '▶';
+    b.classList.remove('btn-stop');
+  }
+  if (!noRedraw) {
+    const p = readP();
+    drawStaff(p, 0);
+    updateTable(p);
+    $('staff-info').textContent = 'Ready';
+  }
+}
+
+// ═══════════════════════════════════════
+// Canvas sizing
+// ═══════════════════════════════════════
+function sizeC() {
+  const { el } = staffC;
+  const r = el.parentElement.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const w = Math.floor(r.width * dpr), h = Math.floor(r.height * dpr);
+  if (el.width !== w || el.height !== h) { el.width = w; el.height = h; el.style.width = r.width + 'px'; el.style.height = r.height + 'px' }
+}
+
+// ═══════════════════════════════════════
+// Staff Renderer
+// ═══════════════════════════════════════
+function drawStaff(p, prog) {
+  const { el, ctx } = staffC;
+  const w = el.width, h = el.height, dpr = window.devicePixelRatio || 1;
+  ctx.clearRect(0, 0, w, h);
+  if (w < 20 || h < 20) return;
+  const ml = 50 * dpr, mr = 16 * dpr, stT = 28 * dpr, stH = 96 * dpr, ls = stH / 4, stB = stT + stH;
+
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+  ctx.lineWidth = 1 * dpr;
+  for (let i = 0; i < 5; i++) { const y = stT + i * ls; ctx.beginPath(); ctx.moveTo(ml, y); ctx.lineTo(w - mr, y); ctx.stroke() }
+
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+  ctx.lineWidth = 1 * dpr;
+  ctx.beginPath();
+  ctx.moveTo(ml, stT);
+  ctx.lineTo(ml, stB);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(w - mr, stT);
+  ctx.lineTo(w - mr, stB);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.font = 40 * dpr + 'px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  try { ctx.fillText('\uD834\uDD1E', ml - 26 * dpr, stT + stH / 2) } catch (e) { ctx.fillText('G', ml - 26 * dpr, stT + stH / 2) };
+
+  const ts = p.timeSig.split('/');
+  ctx.font = 15 * dpr + 'px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  try { ctx.fillText(ts[0], ml + 10 * dpr, stT + stH / 2 - 2 * dpr) } catch (e) {};
+  ctx.textBaseline = 'top';
+  try { ctx.fillText(ts[1], ml + 10 * dpr, stT + stH / 2 + 2 * dpr) } catch (e) {};
+
+  const note = freqToNote(p.baseFreq), midiY = m => stB - (m - 64) * ls / 2;
+  const flags = Math.round(Math.log2(p.noteValue));
+  const restChars = ['\uD834\uDD3D', '\uD834\uDD3E', '\uD834\uDD3F', '\uD834\uDD40'];
+  const restCh = restChars[Math.min(flags, restChars.length - 1)] || '\uD834\uDD3D';
+
+  const npb = notesPerBeat(p.noteValue), qpb = +ts[0] * (4 / +ts[1]), tot = Math.round(qpb * npb);
+  const pat = p.usePattern ? parsePattern(p.patternStr) : null;
+  let disp = [];
+  if (pat) { for (let i = 0; i < tot; i++) disp.push({ on: pat[i % pat.length] === 1 }) } else if (p.articulation < 1) { for (let i = 0; i < tot; i++) { disp.push({ on: true }); disp.push({ on: false }) } } else { for (let i = 0; i < tot; i++) disp.push({ on: true }) }
+
+  const startX = ml + 34 * dpr, avail = w - mr - startX;
+  const ns = avail / Math.max(disp.length, 1), nr = Math.min(5 * dpr, ns * 0.22);
+  for (let i = 0; i < disp.length; i++) {
+    const x = startX + i * ns + ns / 2, y = midiY(note.midi);
+    if (disp[i].on) {
+      ctx.fillStyle = '#1a1a2e';
+      ctx.beginPath();
+      ctx.ellipse(x, y, nr, nr * 0.65, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+      const mid = stT + stH / 2, stemUp = y > mid, sl = 28 * dpr;
+      const stemLX = stemUp ? x + nr * 0.7 : x - nr * 0.7;
+      const stemTX = stemLX;
+      const stemTY = stemUp ? y - sl : y + sl;
+
+      ctx.strokeStyle = '#1a1a2e';
+      ctx.lineWidth = 1.5 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(stemLX, y);
+      ctx.lineTo(stemTX, stemTY);
+      ctx.stroke();
+
+      if (flags > 0) {
+        ctx.strokeStyle = '#1a1a2e';
+        ctx.lineWidth = 1.2 * dpr;
+        for (let f = 0; f < flags; f++) {
+          const fOff = f * 5 * dpr;
+          ctx.beginPath();
+          if (stemUp) {
+            ctx.moveTo(stemTX, stemTY + fOff);
+            ctx.quadraticCurveTo(stemTX + 8 * dpr, stemTY - 4 * dpr + fOff, stemTX + 6 * dpr, stemTY + 4 * dpr + fOff);
+          } else {
+            ctx.moveTo(stemTX, stemTY - fOff);
+            ctx.quadraticCurveTo(stemTX - 8 * dpr, stemTY + 4 * dpr - fOff, stemTX - 6 * dpr, stemTY - 4 * dpr - fOff);
+          }
+          ctx.stroke();
+        }
+      }
+
+      ctx.strokeStyle = 'rgba(0,0,0,0.20)';
+      ctx.lineWidth = 1 * dpr;
+      for (let ly = stB + ls / 2; ly < y - 1; ly += ls / 2) { ctx.beginPath(); ctx.moveTo(x - nr * 2, ly); ctx.lineTo(x + nr * 2, ly); ctx.stroke() }
+      for (let ly = stT - ls / 2; ly > y + 1; ly -= ls / 2) { ctx.beginPath(); ctx.moveTo(x - nr * 2, ly); ctx.lineTo(x + nr * 2, ly); ctx.stroke() }
+    } else {
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.font = Math.min(20 * dpr, ns * 0.5) + 'px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      try { ctx.fillText(restCh, x, stT + stH / 2) } catch (e) { ctx.fillText('r', x, stT + stH / 2) };
+    }
+  }
+
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.font = 11 * dpr + 'px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  try { ctx.fillText(note.name + ' (' + p.baseFreq + ' Hz)', ml, stT - 6 * dpr) } catch (e) {};
+  const curB = S.playing ? S.curBPM : sBPMat(p, prog);
+  const holdLabel = prog >= 1 ? ' (hold)' : '';
+  $('staff-info').textContent = p.timeSig + ' | ' + noteValName(p.noteValue) + ' | ' + curB.toFixed(0) + ' BPM | ' + (Math.min(prog, 1) * 100).toFixed(0) + '%' + holdLabel;
+}
+
+function sBPMat(p, prog) { return p.startBPM + (p.endBPM - p.startBPM) * Math.min(prog, 1) }
+
+// ═══════════════════════════════════════
+// Table updater
+// ═══════════════════════════════════════
+function updateTable(p) {
+  const npb = notesPerBeat(p.noteValue);
+  const art = p.articulation;
+
+  const sBPM = p.startBPM;
+  const sRate = bpmToRep(sBPM, npb);
+  const sPeriod = slotDur(sBPM, npb);
+  const sNoteDur = sPeriod * art;
+  const sReg = regimeName(sRate);
+
+  const eBPM = p.endBPM;
+  const eRate = bpmToRep(eBPM, npb);
+  const ePeriod = slotDur(eBPM, npb);
+  const eNoteDur = ePeriod * art;
+  const eReg = regimeName(eRate);
+
+  $('ti-freq').textContent = p.baseFreq.toFixed(1) + ' Hz';
+  $('ti-freq2').textContent = eRate.toFixed(1) + ' Hz';
+  $('ti-sbpm').textContent = sBPM.toFixed(0);
+  $('ti-srate').textContent = sRate.toFixed(1) + ' Hz';
+  $('ti-sper').textContent = fmtTime(sPeriod);
+  $('ti-sndur').textContent = fmtTime(sNoteDur);
+  const se = $('ti-sreg');
+  se.textContent = sReg.name;
+  se.className = 'regime-' + sReg.cls;
+
+  $('ti-ebpm').textContent = eBPM.toFixed(0);
+  $('ti-erate').textContent = eRate.toFixed(1) + ' Hz';
+  $('ti-eper').textContent = fmtTime(ePeriod);
+  $('ti-endur').textContent = fmtTime(eNoteDur);
+  const ee = $('ti-ereg');
+  ee.textContent = eReg.name;
+  ee.className = 'regime-' + eReg.cls;
+}
+
+// ═══════════════════════════════════════
+// Max BPM computation
+// ═══════════════════════════════════════
+function computeMaxBPM() {
+  const p = readP();
+  const npb = notesPerBeat(p.noteValue);
+  const sr = S.ctx ? S.ctx.sampleRate : 44100;
+  const fromSR = Math.floor(60 * sr / (4 * npb));
+  return Math.max(100, fromSR);
+}
+
+function updateMaxBPM() {
+  const maxBPM = computeMaxBPM();
+  const knob = knobs['knob-end-bpm'];
+  if (knob) {
+    const prev = knob.getValue();
+    knob.setMax(maxBPM);
+    if (knob.getValue() !== prev) {
+      if (!S.playing) { const p = readP(); drawStaff(p, 0); updateTable(p) }
+    }
+  }
+}
+
+// ═══════════════════════════════════════
+// Animation
+// ═══════════════════════════════════════
+function anim(now) {
+  if (!S.playing) return;
+  sizeC();
+  const p = readP(), mode = S.mode || 'sweep';
+  let elapsed = 0;
+  if (S.scheduledStart > 0 && S.ctx) elapsed = Math.max(0, S.ctx.currentTime - S.scheduledStart);
+  let prog, bpm, totalDur;
+  if (mode === 'highspeed') {
+    bpm = p.endBPM;
+    prog = 1;
+    totalDur = HOLD_DUR;
+  } else if (mode === 'normal') {
+    bpm = p.startBPM;
+    prog = 1;
+    totalDur = HOLD_DUR;
+  } else {
+    const dur = p.duration;
+    totalDur = dur + HOLD_DUR;
+    prog = Math.min(elapsed / dur, 1);
+    bpm = p.startBPM + (p.endBPM - p.startBPM) * prog;
+  }
+  S.progress = prog;
+  S.curBPM = bpm;
+  if (elapsed >= totalDur) { stop(); return }
+  if (now - lastStaffUpdate > 120 || prog >= 1) { lastStaffUpdate = now; try { drawStaff(p, prog) } catch (e) {} }
+  S.anim = requestAnimationFrame(anim);
+}
+
+// ═══════════════════════════════════════
+// Read parameters
+// ═══════════════════════════════════════
+function readP() {
+  return {
+    startBPM: KNOB_VALS['knob-start-bpm'] || 60,
+    endBPM: KNOB_VALS['knob-end-bpm'] || 2000,
+    duration: +$('duration').value,
+    baseFreq: midiToFreq(KNOB_VALS['knob-note'] || 69),
+    noteValue: +$('note-value').value,
+    timeSig: $('time-sig').value,
+    articulation: +$('articulation').value,
+    waveform: $('waveform').value,
+    volume: +$('volume').value,
+    usePattern: $('use-pattern').checked,
+    patternStr: $('pattern-input').value,
+  };
+}
+
+// ═══════════════════════════════════════
+// UI
+// ═══════════════════════════════════════
+function setControlsLock(locked) {
+  const sel = '#duration,#volume,#note-value,#time-sig,#articulation,#waveform,#use-pattern,#pattern-input';
+  for (const el of document.querySelectorAll(sel)) el.disabled = locked;
+  for (const el of document.querySelectorAll('.knob-wrap')) el.classList.toggle('disabled', locked);
+  $('knob-start-bpm').classList.remove('disabled');
+  $('knob-end-bpm').classList.remove('disabled');
+  $('btn-sweep').disabled = false;
+  $('btn-normal').disabled = false;
+  $('btn-highspeed').disabled = false;
+}
+
+function setup() {
+  // Create knobs
+  createKnob('knob-start-bpm', {
+    size: 76, min: 10, max: 500, initial: 60, step: 1, snap: true,
+    format: v => v.toFixed(0),
+    onChange: v => { updateMaxBPM(); const p = readP(); drawStaff(p, S.progress); updateTable(p) },
+  });
+
+  createKnob('knob-end-bpm', {
+    size: 76, min: 50, max: 5000, initial: 2000, step: 1, snap: true,
+    format: v => v.toFixed(0),
+    onChange: v => { const p = readP(); drawStaff(p, S.progress); updateTable(p) },
+  });
+
+  createKnob('knob-note', {
+    size: 76, min: 24, max: 96, initial: 69, step: 1, snap: true,
+    accent: '#2ea86a',
+    format: v => NN[v % 12] + (Math.floor(v / 12) - 1),
+    onChange: v => {
+      const freq = midiToFreq(v);
+      const name = freqToNote(freq).name;
+      $('current-note').textContent = name + ' (' + freq.toFixed(1) + ' Hz)';
+      updateMaxBPM();
+      if (!S.playing) { const p = readP(); drawStaff(p, 0); updateTable(p) }
+    },
+  });
+
+  // Slider listeners
+  for (const [id, vid, fmt] of [
+    ['duration', 'duration-val', v => v + 's'],
+    ['volume', 'volume-val', v => v],
+  ]) {
+    const s = $(id), v = $(vid);
+    s.addEventListener('input', () => {
+      v.textContent = fmt(s.value);
+      if (!S.playing) { const p = readP(); drawStaff(p, 0); updateTable(p) }
+    });
+  }
+
+  // Select change listeners
+  $('use-pattern').addEventListener('change', () => {
+    $('pattern-input').disabled = !$('use-pattern').checked
+  });
+  $('pattern-input').addEventListener('input', () => {
+    const v = $('pattern-input').value.trim();
+    $('pattern-input').style.borderColor = v ? (parsePattern(v) ? '#2ea86a' : '#c92a3e') : '';
+  });
+  $('btn-sweep').addEventListener('click', () => startWithMode('sweep'));
+  $('btn-normal').addEventListener('click', () => startWithMode('normal'));
+  $('btn-highspeed').addEventListener('click', () => startWithMode('highspeed'));
+  $('btn-match').addEventListener('click', () => {
+    const p = readP();
+    const target = Math.round(p.baseFreq * 60 / p.noteValue);
+    const knob = knobs['knob-end-bpm'];
+    const maxBPM = computeMaxBPM();
+    knob.setValue(Math.min(target, maxBPM));
+  });
+
+  for (const id of ['note-value', 'time-sig', 'articulation', 'waveform']) {
+    $(id).addEventListener('change', () => {
+      if (id === 'note-value') updateMaxBPM();
+      if (!S.playing) { const p = readP(); drawStaff(p, 0); updateTable(p) }
+    });
+  }
+
+  window.addEventListener('resize', () => { sizeC(); if (!S.playing) drawStaff(readP(), 0) });
+
+  sizeC();
+  try { drawStaff(readP(), 0) } catch (e) { $('staff-info').textContent = 'Staff error: ' + e.message };
+  updateTable(readP());
+  updateMaxBPM();
+  $('staff-info').textContent = 'Ready';
+}
+setup();
+</script>
+</body>
+</html>
