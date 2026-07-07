@@ -220,6 +220,7 @@ A two-row table (Start / End) updates in real time showing:
 A real-time 8192-point FFT analyzer (0–10 kHz) with:
 
 - **H1–H5 cursors** — dashed colored lines at the carrier harmonics `n × fₙ`, with per‑harmonic magnitude readout as a percentage of full scale
+- **USB/LSB sideband cursors** — blue dashed lines at `fₙ ± n·fᵣ` (n = 1–4), showing the AM sum and difference frequencies created by modulation
 - **↻ rep‑rate cursor** — dashed line at `fᵣ` when it differs from `fₙ` by more than 10 Hz
 - **▲ peak label** — the single strongest FFT bin, regardless of source
 - **Regime zones** — translucent background bands: green (Rhythm < 20 Hz), yellow (Transition 20–60 Hz), red (Pitch > 60 Hz)

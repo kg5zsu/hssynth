@@ -186,6 +186,9 @@ limits <code>f<sub>rep</sub> &lt; sample‑rate / 4</code>.</p>
 
 <p><strong>Spectrum view</strong>: H1–H5 cursors mark the
 waveform harmonic series at <code>n·f<sub>note</sub></code>.
+Blue <strong>USB/LSB</strong> cursors mark the AM sidebands
+at <code>f<sub>note</sub> ± n·f<sub>rep</sub></code> —
+the sum and difference frequencies created by modulation.
 The ↻ cursor marks <code>f<sub>rep</sub></code> when it differs from
 <code>f<sub>note</sub></code>. The ▲ label marks the
 strongest measured bin. Frequency scale is 0–10 kHz.</p>
@@ -706,6 +709,31 @@ function drawSpectrum(p, curBPM) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillText(label, hx, mt - 1 - (h - 1) * 11 * dpr);
+  }
+
+  // AM sideband cursors (USB/LSB: f_note ± n·f_rep)
+  const sbColor = '#2e8ac9';
+  for (let n = 1; n <= 4; n++) {
+    for (const sign of [1, -1]) {
+      const sf = noteFreq + sign * n * repRate;
+      if (sf <= 0 || sf >= maxFreq) continue;
+      if (Math.abs(sf - noteFreq) < 5) continue;
+      const sx = ml + sf * freqScale;
+      const label = (sign > 0 ? 'USB' : 'LSB') + n;
+      const alpha = n === 1 ? 0.55 : 0.3;
+      ctx.strokeStyle = sbColor;
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = 1 * dpr;
+      ctx.setLineDash([2 * dpr, 4 * dpr]);
+      ctx.beginPath(); ctx.moveTo(sx, mt); ctx.lineTo(sx, mt + plotH); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = sbColor;
+      ctx.font = 8 * dpr + 'px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(label, sx, mt + plotH - 2 * dpr);
+    }
   }
 
   // repetition rate cursor
