@@ -228,21 +228,21 @@ A real-time 8192-point FFT analyzer (0–10 kHz) with:
 
 ### Waveform View
 
-A locked (non‑scrolling) oscilloscope showing a fixed window of the pre‑generated audio buffer (~4 cycles, minimum 256 samples). The display is stable across playback — it reads from the static buffer rather than the live AnalyserNode, so it does not flicker. The sharp on/off edges of the articulation gate are clearly visible at low BPM; at high BPM the bursts merge into a continuous wave.
+A live real‑time oscilloscope showing the current audio output via the AnalyserNode. The display updates at ~20 fps. The sharp on/off edges of the articulation gate are clearly visible at low BPM; at high BPM the bursts merge into a continuous wave.
 
 ---
 
 ## Audio Engine
 
-All audio is generated entirely in JavaScript using the **Web Audio API** — no samples, no external files. The process:
+All audio is generated in real time using the **Web Audio API** — no samples, no external files. The process:
 
-1. `genBuf()` pre-renders the entire sweep into a `Float32Array` at the browser's native sample rate (typically 44 100 Hz).
-2. The chosen waveform function (sine / square / saw / triangle) is evaluated sample-by-sample.
-3. Each sample belongs to a slot determined by the running beat count. If the slot is "on" (given the pattern and articulation), the oscillator phase advances and the sample is filled; otherwise it is zero.
+1. A `ScriptProcessorNode` (256 samples per callback, ~5.8 ms at 44.1 kHz) runs the synthesis algorithm incrementally. The chosen waveform function (sine / square / saw / triangle) is evaluated sample-by-sample in each callback.
+2. Each sample belongs to a slot determined by the running beat count. If the slot is "on" (given the articulation setting), the oscillator phase advances and the sample is filled; otherwise it is zero.
+3. The synthesizer maintains `virtualTime`, `phase`, and `prevSlot` state between callbacks so the output is sample-accurate across the entire sweep.
 4. BPM sweeps linearly: at any time `t` in the sweep, `bpm(t) = startBPM + (endBPM - startBPM) × t / duration`. Beat accumulation uses the integral of this ramp so timing is exact.
-5. The buffer is loaded into a `BufferSource` node and played back.
+5. The output is connected through a `GainNode` (volume control) and an `AnalyserNode` (FFT / waveform analysis) before reaching the destination.
 
-Rendering happens asynchronously (behind a "Generating audio buffer…" overlay) so the UI stays responsive.
+Because audio is generated on‑the‑fly rather than pre‑rendered, **every parameter change takes effect on the very next callback** (~5.8 ms latency). There is no generation delay, no buffer pre‑render spinner, and controls remain live during playback.
 
 ---
 

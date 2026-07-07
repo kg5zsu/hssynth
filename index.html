@@ -62,11 +62,6 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 #info-text .row{display:flex;gap:10px}
 #info-text .col{flex:1}
 /* Overlay */
-#generating-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;justify-content:center;align-items:center;font-size:18px;color:#fff;flex-direction:column;gap:12px}
-#generating-overlay.show{display:flex}
-#gen-spinner{width:32px;height:32px;border:3px solid rgba(255,255,255,.1);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-</style>
 </head>
 <body>
 <div id="app">
@@ -193,15 +188,12 @@ The ↻ cursor marks <code>f<sub>rep</sub></code> when it differs from
 <code>f<sub>note</sub></code>. The ▲ label marks the
 strongest measured bin. Frequency scale is 0–10 kHz.</p>
 
-<p><strong>Waveform view</strong>: first ~4 cycles of the audio buffer,
-locked so the display is stable. The sharp vertical edges
-are articulation gating — the waveform abruptly drops to
-zero when the on‑slot ends. Switch to <em>Legato 100%</em> to
-see a continuous un‑gated waveform.</p>
+<p><strong>Waveform view</strong>: live oscilloscope of the current audio
+output. Sharp vertical edges are articulation gating —
+the waveform abruptly drops to zero when the on‑slot ends.
+Switch to <em>Legato 100%</em> to see a continuous un‑gated waveform.</p>
 </div>
 </div>
-
-<div id="generating-overlay"><div id="gen-spinner"></div>Generating audio buffer…</div>
 
 <script type="module">
 const NN = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
@@ -268,10 +260,11 @@ function regimeName(r) {
 // State
 // ═══════════════════════════════════════
 const S = {
-  playing: false, generating: false, mode: 'sweep',
+  playing: false, mode: 'sweep',
   progress: 0, curBPM: 60,
-  ctx: null, buf: null, source: null, gain: null, analyser: null,
+  ctx: null, gain: null, analyser: null, processor: null,
   anim: null, scheduledStart: 0,
+  virtualTime: 0, phase: 0, prevSlot: -1,
 };
 
 const HOLD_DUR = 20;
@@ -386,89 +379,62 @@ function createKnob(containerId, opts) {
 }
 
 // ═══════════════════════════════════════
-// Audio Engine
+// Audio Engine — real-time streaming
 // ═══════════════════════════════════════
-function genBuf(p, mode) {
-  const sr = S.ctx.sampleRate, hold = HOLD_DUR;
-  const totalDur = (mode === 'normal' || mode === 'highspeed') ? hold : p.duration + hold;
-  const len = Math.ceil(totalDur * sr), buf = new Float32Array(len);
-  const npb = notesPerBeat(p.noteValue), pat = p.usePattern ? parsePattern(p.patternStr) : null;
-  const sB = p.startBPM, eB = p.endBPM, dur = p.duration, wf = WAVE[p.waveform] || WAVE.sine;
-  let prev = -1, ph = 0;
-  for (let i = 0; i < len; i++) {
+function onAudioProcess(e) {
+  const p = readP();
+  const out = e.outputBuffer.getChannelData(0);
+  const sr = S.ctx.sampleRate;
+  const mode = S.mode;
+  const npb = notesPerBeat(p.noteValue);
+  const wf = WAVE[p.waveform] || WAVE.sine;
+  const sB = p.startBPM, eB = p.endBPM, dur = p.duration;
+  let vt = S.virtualTime, ph = S.phase, ps = S.prevSlot;
+  for (let i = 0; i < out.length; i++) {
+    const t = vt;
+    vt += 1 / sr;
     let bpm, beats;
-    const t = i / sr;
-    if (mode === 'highspeed') {
-      bpm = eB;
-      beats = eB / 60 * t;
-    } else if (mode === 'normal') {
-      bpm = sB;
-      beats = sB / 60 * t;
-    } else {
-      const phase = Math.min(t / dur, 1);
-      bpm = sB + (eB - sB) * phase;
-      if (t <= dur) beats = (sB * t + (eB - sB) * t * t / (2 * dur)) / 60;
-      else {
-        const sweepBeats = (sB * dur + (eB - sB) * dur * dur / (2 * dur)) / 60;
-        beats = sweepBeats + eB * (t - dur) / 60;
-      }
+    if (mode === 'highspeed') { bpm = eB; beats = eB / 60 * t }
+    else if (mode === 'normal') { bpm = sB; beats = sB / 60 * t }
+    else {
+      const prog = Math.min(t / dur, 1);
+      bpm = sB + (eB - sB) * prog;
+      beats = t <= dur
+        ? (sB * t + (eB - sB) * t * t / (2 * dur)) / 60
+        : (sB * dur + (eB - sB) * dur / 2) / 60 + eB * (t - dur) / 60;
     }
     const slot = Math.floor(beats * npb);
     const frac = (beats * npb) - slot;
-    let isOn;
-    if (pat) isOn = pat[slot % pat.length] === 1;
-    else isOn = frac < p.articulation;
-    if (isOn) {
-      if (slot !== prev) { prev = slot; ph = 0 }
+    if (frac < p.articulation) {
+      if (slot !== ps) { ps = slot; ph = 0 }
       ph += 1 / sr * p.baseFreq;
-      buf[i] = wf(ph);
+      out[i] = wf(ph);
     } else {
-      if (slot !== prev) { prev = slot; ph = 0 }
-      buf[i] = 0;
+      if (slot !== ps) { ps = slot; ph = 0 }
+      out[i] = 0;
     }
   }
-  return buf;
-}
-
-function playBuf(buf) {
-  const ctx = S.ctx, ab = ctx.createBuffer(1, buf.length, ctx.sampleRate);
-  ab.getChannelData(0).set(buf);
-  S.gain = ctx.createGain();
-  S.gain.gain.value = readP().volume;
-  S.analyser = ctx.createAnalyser();
-  S.analyser.fftSize = 8192;
-  S.source = ctx.createBufferSource();
-  S.source.buffer = ab;
-  S.source.connect(S.gain);
-  S.gain.connect(S.analyser);
-  S.analyser.connect(ctx.destination);
-  const off = 0.05, startTime = ctx.currentTime + off;
-  S.source.start(startTime, 0);
-  S.scheduledStart = startTime;
+  S.virtualTime = vt; S.phase = ph; S.prevSlot = ps;
 }
 
 async function startWithMode(mode) {
-  if (S.playing || S.generating) {
-    if (S.playing) stop();
-    if (S.generating) { S.generating = false; $('generating-overlay').classList.remove('show'); setControlsLock(false) }
-    return;
-  }
+  if (S.playing) { stop(); return }
   if (!S.ctx) S.ctx = new (window.AudioContext || window.webkitAudioContext)();
   if (S.ctx.state === 'suspended') await S.ctx.resume();
-  const p = readP();
   S.mode = mode;
-  setControlsLock(true);
-  S.generating = true;
-  $('generating-overlay').classList.add('show');
-  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-  const buf = genBuf(p, mode);
-  if (!S.generating) return;
-  S.generating = false;
-  $('generating-overlay').classList.remove('show');
-  S.buf = buf;
+  S.virtualTime = 0; S.phase = 0; S.prevSlot = -1;
+  S.gain = S.ctx.createGain();
+  S.gain.gain.value = readP().volume;
+  S.analyser = S.ctx.createAnalyser();
+  S.analyser.fftSize = 8192;
+  S.processor = S.ctx.createScriptProcessor(256, 0, 1);
+  S.processor.onaudioprocess = onAudioProcess;
+  S.processor.connect(S.gain);
+  S.gain.connect(S.analyser);
+  S.analyser.connect(S.ctx.destination);
   S.playing = true;
   S.progress = 0;
-  playBuf(buf);
+  S.scheduledStart = S.ctx.currentTime;
   for (const btn of [$('btn-sweep'), $('btn-normal'), $('btn-highspeed')]) { btn.textContent = '⏹ Stop'; btn.classList.add('btn-stop') }
   lastStaffUpdate = 0;
   S.anim = requestAnimationFrame(anim);
@@ -477,13 +443,11 @@ async function startWithMode(mode) {
 function stop(noRedraw) {
   S.playing = false;
   S.progress = 0;
-  for (const n of ['source', 'gain', 'analyser']) {
+  for (const n of ['processor', 'gain', 'analyser']) {
     if (S[n]) { try { if (typeof S[n].stop === 'function') S[n].stop() } catch (e) {} try { S[n].disconnect() } catch (e) {} S[n] = null }
   }
   if (S.anim) { cancelAnimationFrame(S.anim); S.anim = null }
-  S.buf = null;
-  S.scheduledStart = 0;
-  setControlsLock(false);
+  S.scheduledStart = 0; S.virtualTime = 0;
   for (const b of [$('btn-sweep'), $('btn-normal'), $('btn-highspeed')]) {
     const labels = { 'btn-sweep': '▶ Sweep', 'btn-normal': '♩ Normal', 'btn-highspeed': '♩ High Speed' };
     b.textContent = labels[b.id] || '▶';
@@ -803,16 +767,13 @@ function drawSpectrum(p, curBPM) {
 // ═══════════════════════════════════════
 // Waveform renderer
 // ═══════════════════════════════════════
-function drawWaveform(p, curBPM) {
+function drawWaveform() {
   const { el, ctx } = C.waveform;
   const w = el.width, h = el.height, dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, w, h);
-  if (!S.buf || w < 20 || h < 20) return;
-  const sr = S.ctx ? S.ctx.sampleRate : 44100;
-  const repRate = bpmToRep(curBPM, notesPerBeat(p.noteValue));
-  const spc = repRate > 0 ? sr / repRate : sr;
-  const nCycles = 4;
-  const win = Math.max(256, Math.min(S.buf.length, Math.round(spc * nCycles)));
+  if (!S.analyser || w < 20 || h < 20) return;
+  const data = new Uint8Array(S.analyser.fftSize);
+  S.analyser.getByteTimeDomainData(data);
   const ml = 12 * dpr, mr = 12 * dpr;
   const plotW = w - ml - mr;
   const cx = h / 2;
@@ -823,20 +784,18 @@ function drawWaveform(p, curBPM) {
   ctx.lineWidth = 1 * dpr;
   ctx.beginPath(); ctx.moveTo(ml, cx); ctx.lineTo(w - mr, cx); ctx.stroke();
 
-  // waveform line (locked — reads from static buffer, not live analyser)
+  // waveform line (live — reads from AnalyserNode)
   ctx.strokeStyle = '#2ea86a';
   ctx.lineWidth = 1.5 * dpr;
   ctx.beginPath();
-  for (let i = 0; i < win; i++) {
-    const x = ml + (i / win) * plotW;
-    const y = cx + S.buf[i] * amp;
+  for (let i = 0; i < data.length; i++) {
+    const x = ml + (i / data.length) * plotW;
+    const y = cx + ((data[i] - 128) / 128) * amp;
     i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
   }
   ctx.stroke();
 
-  // info
-  const dur = (win / sr * 1000).toFixed(1);
-  $('waveform-info').textContent = win + ' samples (' + dur + ' ms, ' + nCycles + ' cycles)  locked';
+  $('waveform-info').textContent = data.length + ' samples | live';
 }
 
 // ═══════════════════════════════════════
@@ -928,7 +887,7 @@ function anim(now) {
   S.curBPM = bpm;
   if (elapsed >= totalDur) { stop(); return }
   if (now - lastStaffUpdate > 120 || prog >= 1) { lastStaffUpdate = now; try { drawStaff(p, prog) } catch (e) {} }
-  if (now - lastSpectrumUpdate > 50) { lastSpectrumUpdate = now; try { drawSpectrum(p, bpm); drawWaveform(p, bpm) } catch (e) {} }
+  if (now - lastSpectrumUpdate > 50) { lastSpectrumUpdate = now; try { drawSpectrum(p, bpm); drawWaveform() } catch (e) {} }
   S.anim = requestAnimationFrame(anim);
 }
 
@@ -954,16 +913,7 @@ function readP() {
 // ═══════════════════════════════════════
 // UI
 // ═══════════════════════════════════════
-function setControlsLock(locked) {
-  const sel = '#duration,#volume,#note-value,#time-sig,#articulation,#waveform';
-  for (const el of document.querySelectorAll(sel)) el.disabled = locked;
-  for (const el of document.querySelectorAll('.knob-wrap')) el.classList.toggle('disabled', locked);
-  $('knob-start-bpm').classList.remove('disabled');
-  $('knob-end-bpm').classList.remove('disabled');
-  $('btn-sweep').disabled = false;
-  $('btn-normal').disabled = false;
-  $('btn-highspeed').disabled = false;
-}
+function setControlsLock(_locked) {}
 
 function setup() {
   // Create knobs
