@@ -25,11 +25,6 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 .btn-match:hover{background:var(--surface2)}
 .btn-dis{opacity:.4;pointer-events:none}
 #sep{width:1px;height:22px;background:var(--border);flex-shrink:0}
-.pattern-row{display:flex;align-items:center;gap:4px;width:100%;margin-top:2px}
-.pattern-row label{font-size:11px;color:var(--text-dim);white-space:nowrap}
-.pattern-row input[type=text]{flex:1;max-width:280px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-size:12px;font-family:monospace}
-.pattern-row input[type=text]:focus{outline:none;border-color:var(--accent)}
-.pattern-row input[type=checkbox]{accent-color:var(--accent);cursor:pointer}
 /* Knobs */
 .knob-wrap{display:inline-flex;flex-direction:column;align-items:center;gap:1px;position:relative}
 .knob-wrap canvas{cursor:ns-resize;border-radius:50%}
@@ -39,9 +34,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 /* Canvases */
 #canvases{flex:1;display:flex;flex-direction:column;min-height:0;gap:3px}
 .canvas-wrap{background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;display:flex;flex-direction:column}
-.canvas-wrap.staff{flex:3}
-.canvas-wrap.spectrum{flex:2;min-height:80px}
-.canvas-wrap.waveform{flex:1;min-height:50px}
+.canvas-wrap.staff{flex:2.25}
+.canvas-wrap.spectrum{flex:3;min-height:80px}
+.canvas-wrap.waveform{flex:2;min-height:50px}
 .canvas-wrap canvas{width:100%;height:100%;display:block}
 .canvas-label{font-size:10px;padding:2px 10px;color:var(--text-dim);background:var(--surface2);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;flex-shrink:0}
 /* Note display */
@@ -57,10 +52,15 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 #info-table .regime-green{color:var(--green)}
 #info-table .regime-yellow{color:var(--yellow)}
 /* Info text pane */
-#info-text{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 12px;flex-shrink:0;font-size:12pt;line-height:1.5;color:var(--text)}
-#info-text p{margin-bottom:4px}
+#info-text{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 12px;flex-shrink:0;font-size:13px;line-height:1.55;color:var(--text);max-height:34vh;overflow-y:auto}
+#info-text p{margin-bottom:3px}
 #info-text p:last-child{margin-bottom:0}
 #info-text strong{color:var(--accent)}
+#info-text code{background:var(--surface2);padding:0 4px;border-radius:2px;font-size:13px}
+#info-text sub{font-size:0.85em}
+
+#info-text .row{display:flex;gap:10px}
+#info-text .col{flex:1}
 /* Overlay */
 #generating-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;justify-content:center;align-items:center;font-size:18px;color:#fff;flex-direction:column;gap:12px}
 #generating-overlay.show{display:flex}
@@ -79,7 +79,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 <div class="knob-wrap" id="knob-note"><canvas></canvas><span class="knob-label">Note</span><span class="knob-value" id="base-freq-val">A4</span></div>
 
 <div id="sep"></div>
-<div class="ctrl-group"><label>Sweep</label><input type="range" id="duration" min="2" max="30" value="8" step="0.5"><span class="val" id="duration-val">8s</span></div>
+<div class="ctrl-group"><label>Sweep</label><input type="range" id="duration" min="2" max="30" value="8" step="0.5"><span class="val" id="duration-val">8s</span> <button class="btn btn-match" id="btn-match">Match</button></div>
 <div class="ctrl-group"><label>Value</label>
 <select id="note-value">
 <option value="1">1/4</option><option value="2" selected>1/8</option><option value="4">1/16</option><option value="8">1/32</option>
@@ -99,11 +99,6 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 <option value="sine" selected>Sine</option><option value="square">Square</option><option value="saw">Saw</option><option value="triangle">Triangle</option>
 </select></div>
 <div class="ctrl-group"><label>Vol</label><input type="range" id="volume" min="0" max="1" value="0.5" step="0.05"><span class="val" id="volume-val">0.5</span></div>
-<div class="pattern-row">
-<input type="checkbox" id="use-pattern"><label for="use-pattern">Custom pattern</label>
-<input type="text" id="pattern-input" placeholder="e.g. 1,0,1,0,1,1,1,0" disabled>
-<button class="btn btn-match" id="btn-match">Match</button>
-</div>
 </div>
 
 <div id="canvases">
@@ -140,10 +135,66 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 </table>
 
 <div id="info-text">
-<p><strong>Rhythm → Pitch</strong> — As note repetition rate rises, rhythmic events blend into continuous pitch. Below ~20 Hz is <em>Rhythm</em>, above ~60 Hz is <em>Pitch</em>.</p>
-<p><strong>Rate</strong> = BPM × note‑value / 60 (Hz). <strong>Period</strong> = 60 / BPM / note‑value — the time between slots. <strong>Note Duration</strong> = Period × Articulation — the sounding portion of each slot.</p>
-<p>At 50% articulation, Note Duration = Period × 0.5, so <strong>Period = 2 × Note Duration</strong>. The note sounds for exactly half the slot, leaving the rest as silence.</p>
-<p><strong>Max BPM</strong> is capped by the Nyquist rate: rep‑rate ≤ sample‑rate / 4. At 44.1 kHz with 1/8 notes, that's ~330k BPM. Higher BPMs allow rep‑rate to exceed note frequency, creating inharmonic sidebands.</p>
+<p><strong>Signal model: Amplitude Modulation.</strong>
+The demo gate-modulates a carrier at <code>f<sub>note</sub></code> (note freq) by an on/off
+envelope at <code>f<sub>rep</sub></code> (repetition rate = BPM×note‑value/60). This
+produces three families of spectral peaks:</p>
+
+<div class="row">
+<div class="col">
+<p><strong>①  Envelope harmonics</strong> — the gating envelope is a square wave at
+<code>f<sub>rep</sub></code>. Its harmonic series (1st, 2nd, 3rd, …)
+appear at <code>f<sub>rep</sub>, 2f<sub>rep</sub>, 3f<sub>rep</sub>, …</code>
+These are the low-frequency “rhythm” lines. In the Rhythm
+regime (&lt; 20 Hz) they are individually audible
+as a click-train; above ~60 Hz they fuse into a
+perceived pitch at <code>f<sub>rep</sub></code>.</p>
+
+<p><strong>②  Waveform harmonics</strong> — the chosen waveform
+(sine / square / saw / triangle) contributes its own
+series anchored at <code>f<sub>note</sub></code>:
+<br>• Sine: fundamental only
+<br>• Square: odd (1×, 3×, 5×)
+<br>• Saw: all integers (1×, 2×, 3×, …)
+<br>• Triangle: odd, falling amplitude
+<br>These encode the <em>timbre</em> of each note event and are
+visible regardless of BPM.</p>
+</div>
+
+<div class="col">
+<p><strong>③  AM sidebands</strong> — the key to this demo. Amplitude
+modulation places sidebands on each waveform harmonic
+at <code>f<sub>nm</sub> ± n·f<sub>rep</sub></code> (n = 1, 2, 3, …).
+At low rep rates the sidebands cluster tightly around
+<code>f<sub>note</sub></code>; as <code>f<sub>rep</sub></code> rises the
+sidebands spread apart.</p>
+
+<p><strong>※  Match condition</strong> — when <code>f<sub>rep</sub> = f<sub>note</sub></code>
+(press <em>Match</em>), every sideband lands exactly on a
+harmonic of the carrier. All partials align — the timbre
+snaps into a clean harmonic series and the tone becomes
+a pure pitched note.</p>
+
+<p><strong>‡  Inharmonic regime</strong> — when <code>f<sub>rep</sub> &gt; f<sub>note</sub></code>
+the sidebands overshoot: the 1st upper sideband
+<code>f<sub>note</sub> + f<sub>rep</sub></code> exceeds twice the
+carrier. The spectrum becomes non‑integer, producing a
+clangorous, bell‑like quality. The Nyquist bound
+limits <code>f<sub>rep</sub> &lt; sample‑rate / 4</code>.</p>
+</div>
+</div>
+
+<p><strong>Spectrum view</strong>: H1–H5 cursors mark the
+waveform harmonic series at <code>n·f<sub>note</sub></code>.
+The ↻ cursor marks <code>f<sub>rep</sub></code> when it differs from
+<code>f<sub>note</sub></code>. The ▲ label marks the
+strongest measured bin. Frequency scale is 0–10 kHz.</p>
+
+<p><strong>Waveform view</strong>: first ~4 cycles of the audio buffer,
+locked so the display is stable. The sharp vertical edges
+are articulation gating — the waveform abruptly drops to
+zero when the on‑slot ends. Switch to <em>Legato 100%</em> to
+see a continuous un‑gated waveform.</p>
 </div>
 </div>
 
@@ -196,7 +247,7 @@ function noteValName(nv) {
 function notesPerBeat(nv) { return nv }
 function slotDur(bpm, nv) { return 60 / bpm / nv }
 function bpmToRep(bpm, nv) { return bpm / 60 * nv }
-function getPat() { return parsePattern($('pattern-input').value) }
+function getPat() { return null }
 
 function fmtTime(s) {
   if (s < 0.001) return (s * 1e6).toFixed(0) + ' µs';
@@ -580,11 +631,11 @@ function drawSpectrum(p, curBPM) {
   if (!S.analyser || w < 20 || h < 20) return;
   const bins = new Uint8Array(S.analyser.frequencyBinCount);
   S.analyser.getByteFrequencyData(bins);
-  const ml = 36 * dpr, mr = 8 * dpr, mt = 4 * dpr, mb = 18 * dpr;
+  const ml = 48 * dpr, mr = 16 * dpr, mt = 12 * dpr, mb = 34 * dpr;
   const plotW = w - ml - mr, plotH = h - mt - mb;
   const nyquist = S.ctx.sampleRate / 2;
   const repRate = bpmToRep(curBPM, notesPerBeat(p.noteValue));
-  const maxFreq = Math.min(nyquist, 8000);
+  const maxFreq = 10000;
   const freqScale = plotW / maxFreq;
 
   // regime zones
@@ -623,47 +674,72 @@ function drawSpectrum(p, curBPM) {
     }
   }
 
-  // repetition rate cursor
-  if (repRate > 0 && repRate < maxFreq) {
-    const cx = ml + repRate * freqScale;
-    ctx.strokeStyle = 'rgba(201,42,62,0.7)';
-    ctx.lineWidth = 2 * dpr;
-    ctx.setLineDash([4 * dpr, 3 * dpr]);
-    ctx.beginPath(); ctx.moveTo(cx, mt); ctx.lineTo(cx, mt + plotH); ctx.stroke();
+  // harmonic cursors (H1 = fundamental, H2–H5 = overtones)
+  const noteFreq = p.baseFreq;
+  const harmLabels = [];
+  const hColors = ['#c92a3e', '#e08a2e', '#c9942e', '#2ea86a', '#2e8ac9'];
+  for (let h = 1; h <= 5; h++) {
+    const hf = noteFreq * h;
+    if (hf <= 0 || hf >= maxFreq) { harmLabels.push(null); continue; }
+    const hx = ml + hf * freqScale;
+    const binIdx = Math.round(hf / binWidth);
+    const mag = binIdx < bins.length ? bins[binIdx] : 0;
+    const pct = (mag / 255 * 100).toFixed(0);
+    harmLabels.push({ freq: hf, mag, pct });
+
+    // cursor line
+    const alpha = h === 1 ? 0.7 : 0.35;
+    const lw = h === 1 ? 2 * dpr : 1 * dpr;
+    const dash = h === 1 ? [4 * dpr, 3 * dpr] : [2 * dpr, 4 * dpr];
+    ctx.strokeStyle = hColors[h - 1];
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = lw;
+    ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(hx, mt); ctx.lineTo(hx, mt + plotH); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = '#c92a3e';
-    ctx.font = 10 * dpr + 'px sans-serif';
+    ctx.globalAlpha = 1;
+
+    // label above
+    const label = 'H' + h + ' ' + hf.toFixed(1) + ' Hz';
+    ctx.fillStyle = hColors[h - 1];
+    ctx.font = (h === 1 ? 10 : 9) * dpr + 'px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(repRate.toFixed(1) + ' Hz', cx, mt - 1 * dpr);
-
-    // harmonic markers
-    for (let h = 2; h <= 6; h++) {
-      const hf = repRate * h;
-      if (hf >= maxFreq) break;
-      const hx = ml + hf * freqScale;
-      ctx.strokeStyle = 'rgba(201,42,62,0.25)';
-      ctx.lineWidth = 1 * dpr;
-      ctx.setLineDash([2 * dpr, 4 * dpr]);
-      ctx.beginPath(); ctx.moveTo(hx, mt); ctx.lineTo(hx, mt + plotH); ctx.stroke();
-      ctx.setLineDash([]);
-    }
+    ctx.fillText(label, hx, mt - 1 - (h - 1) * 11 * dpr);
   }
 
-  // peak detection
-  let peakIdx = 0, peakVal = 0;
+  // repetition rate cursor
+  if (repRate > 0 && repRate < maxFreq && Math.abs(repRate - noteFreq) > 10) {
+    const rx = ml + repRate * freqScale;
+    ctx.strokeStyle = 'rgba(201,42,62,0.5)';
+    ctx.lineWidth = 1.5 * dpr;
+    ctx.setLineDash([3 * dpr, 5 * dpr]);
+    ctx.beginPath(); ctx.moveTo(rx, mt); ctx.lineTo(rx, mt + plotH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(201,42,62,0.6)';
+    ctx.font = 9 * dpr + 'px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('↻ ' + repRate.toFixed(1) + ' Hz', rx, mt - 1 * dpr);
+  }
+
+  // overall peak detection (labels the strongest bin regardless of harmonic)
+  let peakI = 1, peakV = 0;
   for (let i = 1; i < bins.length; i++) {
-    if (bins[i] > peakVal) { peakVal = bins[i]; peakIdx = i }
+    const f = i * binWidth;
+    if (f > maxFreq) break;
+    if (bins[i] > peakV) { peakV = bins[i]; peakI = i }
   }
-  if (peakVal > 20) {
-    const peakFreq = peakIdx * binWidth;
-    const note = freqToNote(peakFreq);
-    ctx.fillStyle = '#2ea86a';
+  if (peakV > 20) {
+    const pf = peakI * binWidth;
+    const pn = freqToNote(pf);
+    ctx.fillStyle = '#ffffff';
     ctx.font = 10 * dpr + 'px sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
-    const px = ml + peakFreq * freqScale;
-    ctx.fillText(note.name + ' ' + peakFreq.toFixed(1) + ' Hz', px - 4 * dpr, mt - 1 * dpr);
+    const px = ml + pf * freqScale;
+    const lx = Math.max(ml + 2 * dpr, Math.min(px - 4 * dpr, w - mr - 4 * dpr));
+    ctx.fillText('▲ ' + pn.name + ' ' + pf.toFixed(0) + ' Hz', lx, mt + plotH - 2 * dpr);
   }
 
   // axis labels
@@ -671,7 +747,7 @@ function drawSpectrum(p, curBPM) {
   ctx.font = 9 * dpr + 'px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  const nTicks = 8;
+  const nTicks = 10;
   for (let i = 0; i <= nTicks; i++) {
     const f = (maxFreq / nTicks) * i;
     const x = ml + f * freqScale;
@@ -690,41 +766,49 @@ function drawSpectrum(p, curBPM) {
   ctx.restore();
 
   // info
-  $('spectrum-info').textContent = 'Peak: ' + (peakVal > 20 ? (peakIdx * binWidth).toFixed(1) + ' Hz' : '—') + ' | Rep rate: ' + repRate.toFixed(1) + ' Hz | FFT: ' + bins.length;
+  const nNote = freqToNote(noteFreq);
+  const hStr = harmLabels.filter(Boolean).map((h, i) => 'H' + (i + 1) + ': ' + h.pct + '%').join(' | ');
+  const peakStr = peakV > 20 ? (peakI * binWidth).toFixed(0) + ' Hz' : '—';
+  $('spectrum-info').textContent = nNote.name + ' ' + noteFreq.toFixed(1) + ' Hz | Peak: ' + peakStr + ' | ' + hStr + ' | FFT: ' + bins.length;
 }
 
 // ═══════════════════════════════════════
 // Waveform renderer
 // ═══════════════════════════════════════
-function drawWaveform() {
+function drawWaveform(p, curBPM) {
   const { el, ctx } = C.waveform;
   const w = el.width, h = el.height, dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, w, h);
-  if (!S.analyser || w < 20 || h < 20) return;
-  const data = new Uint8Array(S.analyser.fftSize);
-  S.analyser.getByteTimeDomainData(data);
-  const ml = 4 * dpr, mr = 4 * dpr;
+  if (!S.buf || w < 20 || h < 20) return;
+  const sr = S.ctx ? S.ctx.sampleRate : 44100;
+  const repRate = bpmToRep(curBPM, notesPerBeat(p.noteValue));
+  const spc = repRate > 0 ? sr / repRate : sr;
+  const nCycles = 4;
+  const win = Math.max(256, Math.min(S.buf.length, Math.round(spc * nCycles)));
+  const ml = 12 * dpr, mr = 12 * dpr;
   const plotW = w - ml - mr;
   const cx = h / 2;
+  const amp = (h / 2 - 16 * dpr) * 0.85;
 
   // zero line
   ctx.strokeStyle = 'rgba(0,0,0,0.10)';
   ctx.lineWidth = 1 * dpr;
   ctx.beginPath(); ctx.moveTo(ml, cx); ctx.lineTo(w - mr, cx); ctx.stroke();
 
-  // waveform line
+  // waveform line (locked — reads from static buffer, not live analyser)
   ctx.strokeStyle = '#2ea86a';
   ctx.lineWidth = 1.5 * dpr;
   ctx.beginPath();
-  for (let i = 0; i < data.length; i++) {
-    const x = ml + (i / data.length) * plotW;
-    const y = cx + ((data[i] - 128) / 128) * (h / 2 - 4 * dpr);
+  for (let i = 0; i < win; i++) {
+    const x = ml + (i / win) * plotW;
+    const y = cx + S.buf[i] * amp;
     i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
   }
   ctx.stroke();
 
   // info
-  $('waveform-info').textContent = data.length + ' samples | ±' + (h / 2 - 4 * dpr).toFixed(0) + ' px';
+  const dur = (win / sr * 1000).toFixed(1);
+  $('waveform-info').textContent = win + ' samples (' + dur + ' ms, ' + nCycles + ' cycles)  locked';
 }
 
 // ═══════════════════════════════════════
@@ -816,7 +900,7 @@ function anim(now) {
   S.curBPM = bpm;
   if (elapsed >= totalDur) { stop(); return }
   if (now - lastStaffUpdate > 120 || prog >= 1) { lastStaffUpdate = now; try { drawStaff(p, prog) } catch (e) {} }
-  if (now - lastSpectrumUpdate > 50) { lastSpectrumUpdate = now; try { drawSpectrum(p, bpm); drawWaveform() } catch (e) {} }
+  if (now - lastSpectrumUpdate > 50) { lastSpectrumUpdate = now; try { drawSpectrum(p, bpm); drawWaveform(p, bpm) } catch (e) {} }
   S.anim = requestAnimationFrame(anim);
 }
 
@@ -834,8 +918,8 @@ function readP() {
     articulation: +$('articulation').value,
     waveform: $('waveform').value,
     volume: +$('volume').value,
-    usePattern: $('use-pattern').checked,
-    patternStr: $('pattern-input').value,
+    usePattern: false,
+    patternStr: '',
   };
 }
 
@@ -843,7 +927,7 @@ function readP() {
 // UI
 // ═══════════════════════════════════════
 function setControlsLock(locked) {
-  const sel = '#duration,#volume,#note-value,#time-sig,#articulation,#waveform,#use-pattern,#pattern-input';
+  const sel = '#duration,#volume,#note-value,#time-sig,#articulation,#waveform';
   for (const el of document.querySelectorAll(sel)) el.disabled = locked;
   for (const el of document.querySelectorAll('.knob-wrap')) el.classList.toggle('disabled', locked);
   $('knob-start-bpm').classList.remove('disabled');
@@ -893,13 +977,6 @@ function setup() {
   }
 
   // Select change listeners
-  $('use-pattern').addEventListener('change', () => {
-    $('pattern-input').disabled = !$('use-pattern').checked
-  });
-  $('pattern-input').addEventListener('input', () => {
-    const v = $('pattern-input').value.trim();
-    $('pattern-input').style.borderColor = v ? (parsePattern(v) ? '#2ea86a' : '#c92a3e') : '';
-  });
   $('btn-sweep').addEventListener('click', () => startWithMode('sweep'));
   $('btn-normal').addEventListener('click', () => startWithMode('normal'));
   $('btn-highspeed').addEventListener('click', () => startWithMode('highspeed'));
